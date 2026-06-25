@@ -2,15 +2,13 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <!-- Эта строка делает так, чтобы на телефоне всё влезало и не зумилось -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Моё Мини-приложение</title>
     
-    <!-- Подключаем мост к ВКонтакте (без него ничего не работает) -->
+    <!-- Подключаем мост к ВКонтакте -->
     <script src="https://unpkg.com/@vkontakte/vk-bridge/dist/browser.min.js"></script>
 
     <style>
-        /* Делаем фон как в приложении ВК */
         body {
             margin: 0;
             padding: 16px;
@@ -23,7 +21,6 @@
         h1 { font-weight: 600; margin-bottom: 8px; }
         p { color: var(--vk-muted-color, #818C99); margin-bottom: 24px; }
 
-        /* Кнопка в стиле ВК */
         button {
             width: 100%;
             padding: 16px;
@@ -36,49 +33,85 @@
             cursor: pointer;
         }
         button:disabled { opacity: 0.6; cursor: not-allowed; }
+        
+        .error-msg { color: #ff5252; background: #ffebee; padding: 12px; border-radius: 12px; margin-top: 16px; display: none; }
     </style>
 </head>
 <body>
 
     <div id="app">
         <h1 id="status-text">Инициализация...</h1>
-        <p>Ждём ответа от ВКонтакте...</p>
+        <p id="status-desc">Ждём ответа от ВКонтакте...</p>
+        <div id="error-box" class="error-msg"></div>
         
-        <!-- Кнопка будет скрыта, пока не загрузится ВК -->
         <button id="my-btn" style="display: none;" onclick="doAction()">Нажми меня!</button>
         
         <div id="result" style="margin-top: 20px; padding: 15px; background: #f0f2f5; border-radius: 12px; display: none;"></div>
     </div>
 
     <script>
-        // 1. Отправляем сигнал: "Я тут, готов работать!"
-        vkBridge.send('VKWebAppInit');
+        // Функция для безопасного запуска логики
+        function initApp() {
+            const statusText = document.getElementById('status-text');
+            const statusDesc = document.getElementById('status-desc');
+            const errorBox = document.getElementById('error-box');
+            const btn = document.getElementById('my-btn');
 
-        // 2. Слушаем ответ: "ОК, ты инициализирован"
-        vkBridge.on('VKWebAppInit', () => {
-            document.getElementById('status-text').innerText = 'Готово!';
-            document.querySelector('p').innerText = 'Приложение успешно подключено к платформе VK.';
-            
-            // Показываем кнопку
-            document.getElementById('my-btn').style.display = 'block';
-        });
+            // 1. Проверка: подключен ли мост
+            if (!window.vkBridge) {
+                statusText.innerText = 'Ошибка загрузки';
+                statusDesc.innerText = 'Не удалось загрузить VK Bridge. Проверьте консоль (F12).';
+                errorBox.innerText = 'Библиотека vk-bridge не загрузилась. Проверьте подключение к интернету или CDN.';
+                errorBox.style.display = 'block';
+                return;
+            }
 
-        // Функция, которая срабатывает при нажатии кнопки
+            // 2. Отправляем сигнал инициализации
+            window.vkBridge.send('VKWebAppInit');
+
+            // 3. Обработчик успешного ответа
+            window.vkBridge.on('VKWebAppInit', (event) => {
+                console.log('Данные запуска ВК:', event.detail); // Можно посмотреть в консоли браузера
+                
+                statusText.innerText = 'Готово!';
+                statusDesc.innerText = 'Приложение успешно подключено к платформе VK.';
+                btn.style.display = 'block';
+            });
+
+            // 4. Обработчик ошибок (если платформа не ответила)
+            window.vkBridge.on('VKWebAppError', (event) => {
+                console.error('Ошибка VK Bridge:', event.detail);
+                statusText.innerText = 'Ошибка платформы';
+                statusDesc.innerText = 'Не удалось инициализировать приложение ВКонтакте.';
+                errorBox.innerText = 'Код ошибки: ' + (event.detail?.error_code || 'неизвестен');
+                errorBox.style.display = 'block';
+            });
+        }
+
+        // Запускаем проверку сразу, как загрузится скрипт
+        initApp();
+
+        // Логика кнопки
         function doAction() {
             const btn = document.getElementById('my-btn');
             const resultDiv = document.getElementById('result');
             
             btn.disabled = true;
             btn.innerText = 'Выполняю...';
+            resultDiv.style.display = 'none';
 
-            // Пример вызова функции ВК: показать всплывающее окно
-            vkBridge.send('VKWebAppShowAlert', {
+            window.vkBridge.send('VKWebAppShowAlert', {
                 text: 'Ура! Кнопка сработала! 🎉',
                 button: 'Понял'
             }).then((data) => {
-                // Когда пользователь нажмет "Понял", выполнится этот код:
                 resultDiv.style.display = 'block';
                 resultDiv.innerText = 'Пользователь подтвердил действие. Код работает!';
+                btn.disabled = false;
+                btn.innerText = 'Нажми меня снова';
+            }).catch((err) => {
+                console.error('Ошибка вызова метода VK:', err);
+                resultDiv.style.display = 'block';
+                resultDiv.innerText = 'Произошла ошибка при вызове метода ВКонтакте.';
                 btn.disabled = false;
                 btn.innerText = 'Нажми меня снова';
             });
